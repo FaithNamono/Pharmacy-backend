@@ -3,19 +3,26 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import dj_database_url
 
 # Load environment variables
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Try to import dj_database_url, but don't fail if not installed
+try:
+    import dj_database_url
+    DJ_DATABASE_URL_AVAILABLE = True
+except ImportError:
+    DJ_DATABASE_URL_AVAILABLE = False
+    print("Warning: dj_database_url not installed. Database URL feature disabled.")
+
 # Security
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-change-this')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-# Allow Koyeb's domain and local development
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.koyeb.app').split(',')
+# Allow Render's domain and local development
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -74,7 +81,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'pharmacy_backend.wsgi.application'
 
-# Database - Use PostgreSQL on Koyeb, SQLite locally
+# Database - Use SQLite as default
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -82,8 +89,8 @@ DATABASES = {
     }
 }
 
-# Override with PostgreSQL if DATABASE_URL is present (Koyeb)
-if os.environ.get('DATABASE_URL'):
+# Override with PostgreSQL if DATABASE_URL is present and module is available
+if DJ_DATABASE_URL_AVAILABLE and os.environ.get('DATABASE_URL'):
     DATABASES['default'] = dj_database_url.config(conn_max_age=600)
 
 # Password validation
