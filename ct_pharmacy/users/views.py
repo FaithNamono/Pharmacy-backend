@@ -1,4 +1,5 @@
 # ct_pharmacy/users/views.py
+
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -77,13 +78,13 @@ def login_view(request):
                 'email': user.email
             }, status=status.HTTP_401_UNAUTHORIZED)
         
-        # ✅ Add token generation
+        # Add token generation
         token, created = Token.objects.get_or_create(user=user)
         
         return Response({
             'success': True,
             'message': 'Login successful',
-            'token': token.key,  # ✅ Include token
+            'token': token.key,
             'user': UserSerializer(user).data
         }, status=status.HTTP_200_OK)
     
@@ -151,7 +152,7 @@ def send_otp(request):
             return Response({
                 'success': True,
                 'message': f'Test OTP for {destination} is: {otp_code} (Email sending may not be configured)',
-                'test_otp': otp_code  # Include OTP for testing
+                'test_otp': otp_code
             }, status=status.HTTP_200_OK)
     
     print("Send OTP validation errors:", serializer.errors)
@@ -331,6 +332,64 @@ def reset_password(request):
     print("Reset password validation errors:", serializer.errors)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# ============================================================
+# ✅ CHANGE PASSWORD ENDPOINT - ADDED HERE
+# ============================================================
+
+@api_view(['POST'])
+@csrf_exempt
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """Change password for authenticated user (when they know current password)"""
+    print("Change password endpoint hit")
+    print("Request data:", request.data)
+    
+    user = request.user
+    current_password = request.data.get('current_password')
+    new_password = request.data.get('new_password')
+    confirm_password = request.data.get('confirm_password')
+    
+    # Validate inputs
+    if not current_password or not new_password:
+        return Response({
+            'success': False,
+            'error': 'Current password and new password are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if current password is correct
+    if not user.check_password(current_password):
+        return Response({
+            'success': False,
+            'error': 'Current password is incorrect'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if passwords match
+    if new_password != confirm_password:
+        return Response({
+            'success': False,
+            'error': 'New passwords do not match'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate password strength
+    if len(new_password) < 6:
+        return Response({
+            'success': False,
+            'error': 'Password must be at least 6 characters'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Change password
+    user.set_password(new_password)
+    user.save()
+    
+    return Response({
+        'success': True,
+        'message': 'Password changed successfully'
+    }, status=status.HTTP_200_OK)
+
+# ============================================================
+# GET CURRENT USER ENDPOINT
+# ============================================================
+
 @api_view(['GET'])
 @csrf_exempt
 @permission_classes([IsAuthenticated])
@@ -339,12 +398,16 @@ def get_current_user(request):
     serializer = UserSerializer(request.user)
     return Response(serializer.data)
 
+# ============================================================
+# LOGOUT ENDPOINT
+# ============================================================
+
 @api_view(['POST'])
 @csrf_exempt
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     """Logout user"""
-    # ✅ Delete the auth token
+    # Delete the auth token
     try:
         request.user.auth_token.delete()
     except:

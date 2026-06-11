@@ -1,18 +1,23 @@
+# pharmacy_backend/settings.py
+
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+import dj_database_url
+
+# Load environment variables
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-your-secret-key-here'
+# Security
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-change-this')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-DEBUG = True
+# Allow Koyeb's domain and local development
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.koyeb.app').split(',')
 
-ALLOWED_HOSTS = ['*']
-
-
-# =========================
-# INSTALLED APPS
-# =========================
+# Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -20,13 +25,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    
     # Third-party apps
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'whitenoise.runserver_nostatic',
     
-
     # Local apps
     'ct_pharmacy.users',
     'ct_pharmacy.medicines',
@@ -37,35 +42,20 @@ INSTALLED_APPS = [
     'ct_pharmacy.prescriptions',
     'ct_pharmacy.stock',
 ]
-AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
-]
 
-
-# =========================
-# MIDDLEWARE
-# =========================
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# =========================
-# ROOT URLS
-# =========================
 ROOT_URLCONF = 'pharmacy_backend.urls'
 
-
-# =========================
-# TEMPLATES
-# =========================
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -82,16 +72,9 @@ TEMPLATES = [
     },
 ]
 
-
-# =========================
-# WSGI
-# =========================
 WSGI_APPLICATION = 'pharmacy_backend.wsgi.application'
 
-
-# =========================
-# DATABASE
-# =========================
+# Database - Use PostgreSQL on Koyeb, SQLite locally
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -99,143 +82,62 @@ DATABASES = {
     }
 }
 
+# Override with PostgreSQL if DATABASE_URL is present (Koyeb)
+if os.environ.get('DATABASE_URL'):
+    DATABASES['default'] = dj_database_url.config(conn_max_age=600)
 
-# =========================
-# PASSWORD VALIDATORS
-# =========================
+# Password validation
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-
-# =========================
-# INTERNATIONALIZATION
-# =========================
+# Internationalization
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
-
-# =========================
-# STATIC FILES
-# =========================
+# Static files
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
-
-
-# =========================
-# DEFAULT PRIMARY KEY
-# =========================
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
-# =========================
-# CUSTOM USER MODEL
-# =========================
 AUTH_USER_MODEL = 'users.User'
 
-
-# =========================
-# CORS SETTINGS
-# =========================
-CORS_ALLOW_ALL_ORIGINS = True
-
+# CORS Settings
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
-
-# =========================
-# CSRF TRUSTED ORIGINS
-# =========================
-CSRF_TRUSTED_ORIGINS = []
-
-# Allow all localhost ports (Flutter/React dev)
-for port in range(3000, 60000):
-    CSRF_TRUSTED_ORIGINS.append(f"http://localhost:{port}")
-    CSRF_TRUSTED_ORIGINS.append(f"http://127.0.0.1:{port}")
-
-
-# =========================
-# CORS METHODS
-# =========================
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
-
-# =========================
-# CORS HEADERS
-# =========================
+CORS_ALLOW_METHODS = ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT']
 CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
+    'accept', 'accept-encoding', 'authorization', 'content-type',
+    'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with',
 ]
 
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
 
-# =========================
-# CSRF SETTINGS
-# =========================
-CSRF_COOKIE_SECURE = False
-
-CSRF_COOKIE_HTTPONLY = False
-
-CSRF_COOKIE_SAMESITE = 'Lax'
-
-
-# =========================
-# REST FRAMEWORK
-# =========================
+# REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
     ],
-
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
-
     'UNAUTHENTICATED_USER': None,
 }
 
-
-# =========================
-# EMAIL SETTINGS
-# =========================
-# EMAIL SETTINGS
+# Email Settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-
-EMAIL_HOST_USER = 'faithnamono4@gmail.com'
-EMAIL_HOST_PASSWORD = 'kane phfp tvzv rhqu'
-
-DEFAULT_FROM_EMAIL = 'Dervin Pharmacy <faithnamono4@gmail.com>'
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Dervin Pharmacy <noreply@dervinpharmacy.com>')

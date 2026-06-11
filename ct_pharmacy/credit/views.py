@@ -2,6 +2,7 @@
 
 from django.db import models
 from decimal import Decimal
+from datetime import datetime, date
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -56,11 +57,33 @@ class CreditSaleList(generics.ListCreateAPIView):
             unit_price = Decimal(str(item.get('unit_price', 0)))
             total_amount += quantity * unit_price
         
+        # ✅ FIX: Parse due_date properly
+        due_date_value = request.data.get('due_date')
+        if due_date_value:
+            if isinstance(due_date_value, str):
+                try:
+                    due_date = datetime.strptime(due_date_value, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            elif isinstance(due_date_value, date):
+                due_date = due_date_value
+            else:
+                return Response(
+                    {'error': 'Invalid date format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Default to 30 days from now
+            due_date = date.today() + timezone.timedelta(days=30)
+        
         # Create credit sale
         credit_sale = CreditSale.objects.create(
             customer_id=request.data.get('customer'),
             total_amount=total_amount,
-            due_date=request.data.get('due_date'),
+            due_date=due_date,  # ✅ Now using proper date object
             notes=request.data.get('notes', ''),
             issued_by=request.user,
             amount_paid=Decimal('0'),
@@ -182,6 +205,36 @@ def credit_summary(request):
         'total_paid': float(total_paid),
         'total_outstanding': float(total_outstanding),
         'overdue_count': overdue_count,
+    })
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def customer_credit_summary(request, customer_id):
+    """Get credit summary for a specific customer"""
+    try:
+        customer = Customer.objects.get(id=customer_id)
+    except Customer.DoesNotExist:
+        return Response({'error': 'Customer not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    credit_sales = customer.creditsales.all()
+    total_credit = credit_sales.aggregate(total=Sum('total_amount'))['total'] or 0
+    total_paid = credit_sales.aggregate(total=Sum('amount_paid'))['total'] or 0
+    total_outstanding = total_credit - total_paid
+    
+    overdue_sales = credit_sales.filter(
+        due_date__lt=timezone.now().date(),
+        status__in=['pending', 'partially_paid']
+    )
+    overdue_amount = overdue_sales.aggregate(total=Sum('balance'))['total'] or 0
+    
+    return Response({
+        'customer_id': customer.id,
+        'customer_name': customer.full_name,
+        'total_credit': float(total_credit),
+        'total_paid': float(total_paid),
+        'total_outstanding': float(total_outstanding),
+        'overdue_amount': float(overdue_amount),
+        'overdue_count': overdue_sales.count(),
     })
 
 @api_view(['DELETE'])
