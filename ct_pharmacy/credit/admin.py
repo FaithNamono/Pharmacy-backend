@@ -11,10 +11,9 @@ class CreditSaleItemInline(admin.TabularInline):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'phone', 'email', 'total_credit', 'outstanding_balance', 'created_at']
+    list_display = ['full_name', 'phone', 'email', 'created_at']
     search_fields = ['first_name', 'last_name', 'phone', 'email']
     list_filter = ['created_at']
-    readonly_fields = ['total_credit', 'outstanding_balance']
     
     def full_name(self, obj):
         return obj.full_name
@@ -22,15 +21,11 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(CreditSale)
 class CreditSaleAdmin(admin.ModelAdmin):
-    list_display = ['credit_id', 'customer', 'total_amount', 'amount_paid', 'balance', 'due_date', 'status', 'created_at']
+    list_display = ['credit_id', 'customer', 'total_amount', 'amount_paid', 'due_date', 'status', 'created_at']
     list_filter = ['status', 'due_date', 'created_at']
     search_fields = ['credit_id', 'customer__first_name', 'customer__last_name', 'customer__phone']
-    readonly_fields = ['credit_id', 'balance', 'created_at']
+    readonly_fields = ['credit_id', 'created_at']
     inlines = [CreditSaleItemInline]
-    
-    def balance(self, obj):
-        return obj.balance
-    balance.short_description = 'Balance'
 
 @admin.register(CreditSaleItem)
 class CreditSaleItemAdmin(admin.ModelAdmin):

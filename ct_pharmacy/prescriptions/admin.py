@@ -1,10 +1,12 @@
+# ct_pharmacy/prescriptions/admin.py
+
 from django.contrib import admin
 from .models import Prescription, PrescriptionItem
 
 class PrescriptionItemInline(admin.TabularInline):
     model = PrescriptionItem
     extra = 1
-    fields = ['medicine', 'prescribed_quantity', 'filled_quantity', 'dosage_instructions', 'duration']
+    fields = ['medicine', 'quantity', 'dosage_instructions', 'duration']
     raw_id_fields = ['medicine']
 
 @admin.register(Prescription)
