@@ -14,7 +14,7 @@ class StockCountAdmin(admin.ModelAdmin):
     list_display = ('count_id', 'count_date', 'counted_by', 'status')
     list_filter = ('status', 'count_date')
     search_fields = ('count_id', 'counted_by__username')
-    readonly_fields = ('count_id', 'count_date', 'created_at')
+    readonly_fields = ('count_id', 'count_date')  # ✅ Fixed - removed 'created_at'
     inlines = [StockCountItemInline]
     
     fieldsets = (
