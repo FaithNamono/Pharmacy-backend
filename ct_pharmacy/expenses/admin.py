@@ -10,11 +10,19 @@ class ExpenseCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Expense)
 class ExpenseAdmin(admin.ModelAdmin):
-    list_display = ('id', 'category', 'amount', 'date', 'payment_method', 'status', 'recorded_by')
-    list_filter = ('category', 'payment_method', 'status', 'date')
-    search_fields = ('description', 'vendor_name')
-    readonly_fields = ('created_at', 'updated_at')
+    list_display = ('expense_id', 'category', 'amount', 'payment_date', 'payment_method', 'recorded_by')
+    list_filter = ('category', 'payment_method', 'payment_date')
+    search_fields = ('expense_id', 'description', 'supplier__name')
+    readonly_fields = ('expense_id', 'created_at')
     
-    def expense_id(self, obj):
-        return f"EXP-{obj.id}"
-    expense_id.short_description = 'Expense ID'
+    fieldsets = (
+        ('Expense Information', {
+            'fields': ('expense_id', 'category', 'supplier', 'description', 'amount')
+        }),
+        ('Payment Details', {
+            'fields': ('payment_method', 'payment_date', 'receipt_number', 'recorded_by')
+        }),
+        ('Additional Info', {
+            'fields': ('notes', 'created_at')
+        }),
+    )

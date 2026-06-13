@@ -11,15 +11,14 @@ class CategoryAdmin(admin.ModelAdmin):
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
     list_display = ('name', 'contact_person', 'phone', 'email')
-    search_fields = ('name', 'contact_person')
-    list_filter = ()
+    search_fields = ('name', 'contact_person', 'phone')
 
 @admin.register(Medicine)
 class MedicineAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'retail_price', 'quantity', 'expiry_date')
-    list_filter = ('category', 'expiry_date')
+    list_display = ('name', 'category', 'retail_price', 'wholesale_price', 'quantity', 'expiry_date')
+    list_filter = ('category', 'expiry_date', 'unit_type')
     search_fields = ('name', 'generic_name', 'batch_number', 'barcode')
-    list_editable = ('retail_price', 'quantity')
+    list_editable = ('retail_price', 'wholesale_price', 'quantity')
     readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
@@ -27,10 +26,10 @@ class MedicineAdmin(admin.ModelAdmin):
             'fields': ('name', 'generic_name', 'category', 'supplier', 'description')
         }),
         ('Pricing', {
-            'fields': ('unit_cost', 'wholesale_price', 'retail_price')
+            'fields': ('unit_cost', 'wholesale_price', 'retail_price', 'discount_percentage')
         }),
         ('Stock Information', {
-            'fields': ('quantity', 'min_stock_level', 'unit_type')
+            'fields': ('quantity', 'min_stock_level', 'unit_type', 'units_per_pack')
         }),
         ('Expiry & Batch', {
             'fields': ('expiry_date', 'batch_number', 'barcode')
