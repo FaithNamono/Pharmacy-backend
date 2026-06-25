@@ -1,3 +1,5 @@
+# ct_pharmacy/sales/serializers.py
+
 from rest_framework import serializers
 from datetime import date
 from .models import Sale
@@ -21,10 +23,12 @@ class SaleSerializer(serializers.ModelSerializer):
         quantity = data.get('quantity')
         
         if medicine and quantity:
-            if medicine.expiry_date < date.today():
+            # Check if medicine is expired
+            if medicine.expiry_date and medicine.expiry_date < date.today():
                 raise serializers.ValidationError({
                     'medicine': f"Cannot sell expired medicine: {medicine.name}"
                 })
+            # Check stock
             if medicine.quantity < quantity:
                 raise serializers.ValidationError({
                     'quantity': f"Insufficient stock. Available: {medicine.quantity}"
@@ -35,10 +39,25 @@ class SaleSerializer(serializers.ModelSerializer):
         medicine = validated_data['medicine']
         quantity = validated_data['quantity']
         
+        # Get price from medicine
+        unit_price = medicine.price or medicine.retail_price or 0
+        total_price = unit_price * quantity
+        
+        # Create sale with calculated prices
+        sale = Sale.objects.create(
+            **validated_data,
+            unit_price=unit_price,
+            total_price=total_price
+        )
+        
+        # ✅ IMPORTANT: Deduct from stock
         medicine.quantity -= quantity
         medicine.save()
         
-        return Sale.objects.create(**validated_data)
+        print(f"✅ SALE CREATED: {sale.sale_id} - {medicine.name} x{quantity} = UGX {total_price}")
+        print(f"📦 NEW STOCK: {medicine.name} = {medicine.quantity}")
+        
+        return sale
 
 
 class MultiItemSaleSerializer(serializers.Serializer):
@@ -72,32 +91,54 @@ class MultiItemSaleSerializer(serializers.Serializer):
             new_number = 1
         sale_id = f"SALE-{new_number:06d}"
         
+        print(f"🆕 Creating sale with ID: {sale_id}")
+        print(f"📦 Items: {len(items)}")
+        
         # Create all sale items with the same sale_id
         for item in items:
             medicine_id = item.get('medicine_id')
             quantity = item.get('quantity')
             
-            medicine = Medicine.objects.get(id=medicine_id)
+            if not medicine_id or not quantity:
+                raise serializers.ValidationError("Each item must have medicine_id and quantity")
             
+            try:
+                medicine = Medicine.objects.get(id=medicine_id)
+            except Medicine.DoesNotExist:
+                raise serializers.ValidationError(f"Medicine with ID {medicine_id} not found")
+            
+            # Check stock
             if medicine.quantity < quantity:
                 raise serializers.ValidationError(
-                    f"Insufficient stock for {medicine.name}. Available: {medicine.quantity}"
+                    f"Insufficient stock for {medicine.name}. Available: {medicine.quantity}, Requested: {quantity}"
                 )
             
-            medicine.quantity -= quantity
-            medicine.save()
+            # Get price
+            unit_price = medicine.price or medicine.retail_price or 0
+            total_price = unit_price * quantity
             
+            # ✅ Create sale
             sale = Sale(
                 sale_id=sale_id,
                 medicine=medicine,
                 user=user,
                 quantity=quantity,
+                unit_price=unit_price,
+                total_price=total_price,
                 customer_name=validated_data.get('customer_name', ''),
                 notes=validated_data.get('notes', ''),
                 payment_method=validated_data.get('payment_method', 'Cash'),
                 sale_type=validated_data.get('sale_type', 'retail')
             )
-            sale.save()  # This will trigger the price calculations
+            sale.save()
+            
+            # ✅ IMPORTANT: Deduct from stock
+            medicine.quantity -= quantity
+            medicine.save()
+            
+            print(f"✅ SOLD: {medicine.name} x{quantity} = UGX {total_price}")
+            print(f"📦 NEW STOCK: {medicine.name} = {medicine.quantity}")
+            
             created_sales.append(sale)
             total_sale_amount += float(sale.total_price)
         
@@ -105,5 +146,7 @@ class MultiItemSaleSerializer(serializers.Serializer):
         result = created_sales[0]
         result.total_sale_amount = total_sale_amount
         result.items_count = len(created_sales)
+        
+        print(f"💰 TOTAL SALE AMOUNT: UGX {total_sale_amount}")
         
         return result

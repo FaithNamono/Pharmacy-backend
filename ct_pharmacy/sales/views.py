@@ -50,6 +50,7 @@ class SaleList(generics.ListCreateAPIView):
                     'error': str(serializer.errors)
                 }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Handle single item sale
         return super().create(request, *args, **kwargs)
 
 class SaleDetail(generics.RetrieveAPIView):
@@ -90,8 +91,7 @@ def sale_items(request, sale_id):
 def delete_sale(request, sale_id):
     """
     Delete a sale and optionally return stock to inventory.
-    Staff can only delete sales they created.
-    Admins can delete any sale.
+    URL: /api/sales/{sale_id}/delete/?return_stock=true
     """
     try:
         # Get all sales with this sale_id
@@ -109,18 +109,6 @@ def delete_sale(request, sale_id):
                 'success': False,
                 'error': 'You must be logged in to delete sales'
             }, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Check permissions:
-        # - Superusers and staff can delete any sale
-        # - Regular users can only delete their own sales
-        if not request.user.is_staff and not request.user.is_superuser:
-            # Check if this user created the sale
-            user_sales = sales.filter(user=request.user)
-            if not user_sales.exists():
-                return Response({
-                    'success': False,
-                    'error': 'You can only delete sales you created'
-                }, status=status.HTTP_403_FORBIDDEN)
         
         # Get return_stock parameter (default: true)
         return_stock = request.query_params.get('return_stock', 'true').lower() == 'true'
@@ -169,7 +157,6 @@ def delete_sale(request, sale_id):
             'error': f'Failed to delete sale: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# ✅ NEW: Get sale by sale_id (for detail view)
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def get_sale_by_id(request, sale_id):
