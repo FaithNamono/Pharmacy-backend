@@ -39,8 +39,8 @@ class SaleSerializer(serializers.ModelSerializer):
         medicine = validated_data['medicine']
         quantity = validated_data['quantity']
         
-        # Get price from medicine
-        unit_price = medicine.price or medicine.retail_price or 0
+        # ✅ FIXED: Use retail_price instead of price
+        unit_price = float(medicine.retail_price or 0)
         total_price = unit_price * quantity
         
         # Create sale with calculated prices
@@ -50,7 +50,7 @@ class SaleSerializer(serializers.ModelSerializer):
             total_price=total_price
         )
         
-        # ✅ IMPORTANT: Deduct from stock
+        # Deduct from stock
         medicine.quantity -= quantity
         medicine.save()
         
@@ -113,11 +113,11 @@ class MultiItemSaleSerializer(serializers.Serializer):
                     f"Insufficient stock for {medicine.name}. Available: {medicine.quantity}, Requested: {quantity}"
                 )
             
-            # Get price
-            unit_price = medicine.price or medicine.retail_price or 0
+            # ✅ FIXED: Use retail_price instead of price
+            unit_price = float(medicine.retail_price or 0)
             total_price = unit_price * quantity
             
-            # ✅ Create sale
+            # Create sale
             sale = Sale(
                 sale_id=sale_id,
                 medicine=medicine,
@@ -132,7 +132,7 @@ class MultiItemSaleSerializer(serializers.Serializer):
             )
             sale.save()
             
-            # ✅ IMPORTANT: Deduct from stock
+            # ✅ Deduct from stock
             medicine.quantity -= quantity
             medicine.save()
             
