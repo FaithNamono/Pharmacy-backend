@@ -85,13 +85,13 @@ def sale_items(request, sale_id):
         'items_count': sales.count()
     })
 
-# ✅ NEW: Delete Sale View with Stock Return
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def delete_sale(request, sale_id):
     """
     Delete a sale and optionally return stock to inventory.
-    URL: /api/sales/{sale_id}/delete/?return_stock=true
+    Staff can only delete sales they created.
+    Admins can delete any sale.
     """
     try:
         # Get all sales with this sale_id
@@ -103,12 +103,24 @@ def delete_sale(request, sale_id):
                 'error': f'Sale with ID {sale_id} not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Check if user has permission (admin or staff)
-        if not request.user.is_staff and not request.user.is_superuser:
+        # Check if user is authenticated
+        if not request.user.is_authenticated:
             return Response({
                 'success': False,
-                'error': 'You do not have permission to delete sales'
-            }, status=status.HTTP_403_FORBIDDEN)
+                'error': 'You must be logged in to delete sales'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Check permissions:
+        # - Superusers and staff can delete any sale
+        # - Regular users can only delete their own sales
+        if not request.user.is_staff and not request.user.is_superuser:
+            # Check if this user created the sale
+            user_sales = sales.filter(user=request.user)
+            if not user_sales.exists():
+                return Response({
+                    'success': False,
+                    'error': 'You can only delete sales you created'
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # Get return_stock parameter (default: true)
         return_stock = request.query_params.get('return_stock', 'true').lower() == 'true'
