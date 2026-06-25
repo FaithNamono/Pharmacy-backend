@@ -1,9 +1,12 @@
+# ct_pharmacy/sales/views.py
+
 from rest_framework import generics, permissions, filters, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, Count
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 from .models import Sale
 from .serializers import SaleSerializer, MultiItemSaleSerializer
 
@@ -81,3 +84,114 @@ def sale_items(request, sale_id):
         'total_amount': float(sales.aggregate(total=Sum('total_price'))['total'] or 0),
         'items_count': sales.count()
     })
+
+# ✅ NEW: Delete Sale View with Stock Return
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_sale(request, sale_id):
+    """
+    Delete a sale and optionally return stock to inventory.
+    URL: /api/sales/{sale_id}/delete/?return_stock=true
+    """
+    try:
+        # Get all sales with this sale_id
+        sales = Sale.objects.filter(sale_id=sale_id)
+        
+        if not sales.exists():
+            return Response({
+                'success': False,
+                'error': f'Sale with ID {sale_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user has permission (admin or staff)
+        if not request.user.is_staff and not request.user.is_superuser:
+            return Response({
+                'success': False,
+                'error': 'You do not have permission to delete sales'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get return_stock parameter (default: true)
+        return_stock = request.query_params.get('return_stock', 'true').lower() == 'true'
+        
+        # Store sale details for response
+        sale_id_value = sale_id
+        total_amount = sales.aggregate(total=Sum('total_price'))['total'] or 0
+        items_count = sales.count()
+        restored_items = []
+        
+        # If return_stock is True, restore medicine quantities
+        if return_stock:
+            for sale in sales:
+                medicine = sale.medicine
+                medicine.quantity += sale.quantity
+                medicine.save()
+                restored_items.append({
+                    'medicine': medicine.name,
+                    'quantity_restored': sale.quantity
+                })
+            
+            print(f"🔄 RESTORED STOCK for {len(restored_items)} items")
+        
+        # Store data before deletion
+        sale_data = {
+            'sale_id': sale_id_value,
+            'total_amount': float(total_amount),
+            'items_count': items_count,
+            'stock_returned': return_stock,
+            'restored_items': restored_items if return_stock else []
+        }
+        
+        # Delete the sales
+        sales.delete()
+        
+        return Response({
+            'success': True,
+            'message': f'Sale {sale_id_value} deleted successfully',
+            'data': sale_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"❌ DELETE SALE ERROR: {str(e)}")
+        return Response({
+            'success': False,
+            'error': f'Failed to delete sale: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ✅ NEW: Get sale by sale_id (for detail view)
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_sale_by_id(request, sale_id):
+    """
+    Get all items for a specific sale_id
+    """
+    try:
+        sales = Sale.objects.filter(sale_id=sale_id).order_by('id')
+        
+        if not sales.exists():
+            return Response({
+                'success': False,
+                'error': f'Sale with ID {sale_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = SaleSerializer(sales, many=True)
+        total_amount = sales.aggregate(total=Sum('total_price'))['total'] or 0
+        
+        return Response({
+            'success': True,
+            'data': {
+                'sale_id': sale_id,
+                'items': serializer.data,
+                'total_amount': float(total_amount),
+                'items_count': sales.count(),
+                'sale_date': sales.first().sale_date,
+                'customer_name': sales.first().customer_name,
+                'staff_name': sales.first().user.get_full_name() if sales.first().user else '',
+                'payment_method': sales.first().payment_method,
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
