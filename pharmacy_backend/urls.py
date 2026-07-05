@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/credit/', include('ct_pharmacy.credit.urls')),           
     path('api/expenses/', include('ct_pharmacy.expenses.urls')),       
     path('api/prescriptions/', include('ct_pharmacy.prescriptions.urls')),
+    path('api/users/', include('ct_pharmacy.users.urls')),
     path('api/stock/', include('ct_pharmacy.stock.urls')),             
 ]
 

@@ -12,4 +12,9 @@ urlpatterns = [
     path('reset-password/', views.reset_password, name='reset_password'),
     path('current-user/', views.get_current_user, name='current_user'),
     path('change-password/', views.change_password, name='change-password'),
+    path('', views.get_all_users, name='get_all_users'),           # GET /api/users/
+    path('', views.create_user, name='create_user'),               # POST /api/users/
+    path('<int:user_id>/', views.update_user, name='update_user'), # PUT /api/users/{id}/
+    path('<int:user_id>/', views.delete_user, name='delete_user'), # DELETE /api/users/{id}/
+
 ]
