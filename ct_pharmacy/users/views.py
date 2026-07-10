@@ -40,17 +40,33 @@ def register(request):
             expires_at=timezone.now() + timedelta(minutes=10)
         )
 
-        # Try to send email but don't fail if it doesn't work
+        # Attempt to send the email and actually check whether it succeeded.
+        # send_email_otp() catches its own exceptions and returns True/False —
+        # it never raises — so this must check the return value, not rely on
+        # a try/except here (that would never trigger).
+        email_sent = False
         try:
-            send_email_otp(user.email, otp_code, 'verification')
+            email_sent = send_email_otp(user.email, otp_code, 'verification')
         except Exception as e:
             print(f"Email sending error: {e}")
 
-        return Response({
+        response_data = {
             'success': True,
             'message': 'Registration successful. Please verify your email.',
             'user': UserSerializer(user).data
-        }, status=status.HTTP_201_CREATED)
+        }
+
+        if not email_sent:
+            print(f"WARNING: verification email failed to send to {user.email}")
+            response_data['email_warning'] = (
+                'Account created, but the verification email could not be sent. '
+                'Please use "Resend OTP" on the verification screen, or contact support.'
+            )
+            # Also include the OTP directly as a fallback while email delivery
+            # is unreliable on the free tier — remove this once email is confirmed working.
+            response_data['test_otp'] = otp_code
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     print("Validation errors:", serializer.errors)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -255,15 +271,28 @@ def forgot_password(request):
                 expires_at=timezone.now() + timedelta(minutes=10)
             )
 
+            email_sent = False
             try:
-                send_email_otp(email, otp_code, 'reset')
+                email_sent = send_email_otp(email, otp_code, 'reset')
             except Exception as e:
                 print(f"Email sending error: {e}")
 
-            return Response({
+            response_data = {
                 'success': True,
-                'message': f'Password reset OTP sent. Test OTP: {otp_code}'
-            }, status=status.HTTP_200_OK)
+                'message': 'If an account exists, a password reset code has been sent.'
+            }
+
+            if not email_sent:
+                print(f"WARNING: reset email failed to send to {email}")
+                response_data['message'] = (
+                    'Account found, but the reset email could not be sent. '
+                    'Please try again shortly or contact support.'
+                )
+                # Fallback while email delivery is unreliable on the free tier —
+                # remove this once email is confirmed working.
+                response_data['test_otp'] = otp_code
+
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except User.DoesNotExist:
             # Don't reveal if user exists or not for security
