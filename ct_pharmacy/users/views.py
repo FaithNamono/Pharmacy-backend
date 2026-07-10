@@ -419,46 +419,37 @@ def logout_view(request):
 # USER MANAGEMENT ENDPOINTS (Admin Only)
 # ============================================================
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @csrf_exempt
 @permission_classes([IsAuthenticated])
-def get_all_users(request):
-    """Get all users - Admin only"""
+def users_list_create(request):
+    """GET: list all users, POST: create a user - Admin only"""
     if request.user.role != 'admin':
         return Response({
-            'error': 'You do not have permission to view all users'
+            'error': 'You do not have permission to manage users'
         }, status=status.HTTP_403_FORBIDDEN)
 
-    users = User.objects.all().order_by('-date_joined')
-    serializer = UserSerializer(users, many=True)
-    return Response(serializer.data)
+    if request.method == 'GET':
+        users = User.objects.all().order_by('-date_joined')
+        serializer = UserSerializer(users, many=True)
+        return Response(serializer.data)
 
-@api_view(['POST'])
-@csrf_exempt
-@permission_classes([IsAuthenticated])
-def create_user(request):
-    """Create a new user - Admin only"""
-    if request.user.role != 'admin':
-        return Response({
-            'error': 'You do not have permission to create users'
-        }, status=status.HTTP_403_FORBIDDEN)
-
+    # POST
     serializer = UserCreateSerializer(data=request.data)
-
     if serializer.is_valid():
         user = serializer.save()
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['PUT', 'PATCH'])
+@api_view(['PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
 @permission_classes([IsAuthenticated])
-def update_user(request, user_id):
-    """Update a user - Admin only"""
+def user_detail(request, user_id):
+    """PUT/PATCH: update a user, DELETE: remove a user - Admin only"""
     if request.user.role != 'admin':
         return Response({
-            'error': 'You do not have permission to update users'
+            'error': 'You do not have permission to manage users'
         }, status=status.HTTP_403_FORBIDDEN)
 
     try:
@@ -468,42 +459,24 @@ def update_user(request, user_id):
             'error': 'User not found'
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # Don't allow escalating to superuser via this endpoint (security)
+    if request.method == 'DELETE':
+        if user.id == request.user.id:
+            return Response({
+                'error': 'You cannot delete your own account'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user.delete()
+        return Response({
+            'message': 'User deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+    # PUT / PATCH
     data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
     data.pop('is_superuser', None)
 
     serializer = UserSerializer(user, data=data, partial=True)
-
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['DELETE'])
-@csrf_exempt
-@permission_classes([IsAuthenticated])
-def delete_user(request, user_id):
-    """Delete a user - Admin only"""
-    if request.user.role != 'admin':
-        return Response({
-            'error': 'You do not have permission to delete users'
-        }, status=status.HTTP_403_FORBIDDEN)
-
-    try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return Response({
-            'error': 'User not found'
-        }, status=status.HTTP_404_NOT_FOUND)
-
-    # Don't allow deleting yourself
-    if user.id == request.user.id:
-        return Response({
-            'error': 'You cannot delete your own account'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    user.delete()
-    return Response({
-        'message': 'User deleted successfully'
-    }, status=status.HTTP_200_OK)
