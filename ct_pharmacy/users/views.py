@@ -1,5 +1,6 @@
 # ct_pharmacy/users/views.py
 
+import threading
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -16,6 +17,21 @@ from .serializers import (
     UserSerializer
 )
 from .utils import send_email_otp, send_sms_otp, generate_otp
+
+
+def _send_email_otp_background(email, otp_code, otp_type):
+    """
+    Runs send_email_otp() in a background thread so a slow or blocked SMTP
+    connection (common on free-tier hosts) can never hold up the HTTP
+    response or trigger a Gunicorn WORKER TIMEOUT, which previously killed
+    the entire request without ever sending a response back to the client.
+    """
+    try:
+        sent = send_email_otp(email, otp_code, otp_type)
+        if not sent:
+            print(f"WARNING: background email send failed for {email} (type={otp_type})")
+    except Exception as e:
+        print(f"Email sending error (background thread): {e}")
 
 @api_view(['POST'])
 @csrf_exempt
@@ -40,33 +56,24 @@ def register(request):
             expires_at=timezone.now() + timedelta(minutes=10)
         )
 
-        # Attempt to send the email and actually check whether it succeeded.
-        # send_email_otp() catches its own exceptions and returns True/False —
-        # it never raises — so this must check the return value, not rely on
-        # a try/except here (that would never trigger).
-        email_sent = False
-        try:
-            email_sent = send_email_otp(user.email, otp_code, 'verification')
-        except Exception as e:
-            print(f"Email sending error: {e}")
+        # Send the email in a background thread instead of waiting on it here.
+        # A blocked/slow SMTP connection (which is what was happening — Gmail's
+        # SMTP hanging past Gunicorn's 30s worker timeout) used to kill the
+        # entire request before any response reached the client, even though
+        # the user had already been created. Firing this in a daemon thread
+        # means the API responds immediately regardless of how long — or
+        # whether — the email actually goes through.
+        threading.Thread(
+            target=_send_email_otp_background,
+            args=(user.email, otp_code, 'verification'),
+            daemon=True,
+        ).start()
 
-        response_data = {
+        return Response({
             'success': True,
-            'message': 'Registration successful. Please verify your email.',
+            'message': 'Registration successful. Please check your email for a verification code.',
             'user': UserSerializer(user).data
-        }
-
-        if not email_sent:
-            print(f"WARNING: verification email failed to send to {user.email}")
-            response_data['email_warning'] = (
-                'Account created, but the verification email could not be sent. '
-                'Please use "Resend OTP" on the verification screen, or contact support.'
-            )
-            # Also include the OTP directly as a fallback while email delivery
-            # is unreliable on the free tier — remove this once email is confirmed working.
-            response_data['test_otp'] = otp_code
-
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        }, status=status.HTTP_201_CREATED)
 
     print("Validation errors:", serializer.errors)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -271,28 +278,19 @@ def forgot_password(request):
                 expires_at=timezone.now() + timedelta(minutes=10)
             )
 
-            email_sent = False
-            try:
-                email_sent = send_email_otp(email, otp_code, 'reset')
-            except Exception as e:
-                print(f"Email sending error: {e}")
+            # Send the reset email in a background thread — same reasoning as
+            # register(): a hung SMTP connection must never block the HTTP
+            # response or risk a Gunicorn worker timeout killing the request.
+            threading.Thread(
+                target=_send_email_otp_background,
+                args=(email, otp_code, 'reset'),
+                daemon=True,
+            ).start()
 
-            response_data = {
+            return Response({
                 'success': True,
                 'message': 'If an account exists, a password reset code has been sent.'
-            }
-
-            if not email_sent:
-                print(f"WARNING: reset email failed to send to {email}")
-                response_data['message'] = (
-                    'Account found, but the reset email could not be sent. '
-                    'Please try again shortly or contact support.'
-                )
-                # Fallback while email delivery is unreliable on the free tier —
-                # remove this once email is confirmed working.
-                response_data['test_otp'] = otp_code
-
-            return Response(response_data, status=status.HTTP_200_OK)
+            }, status=status.HTTP_200_OK)
 
         except User.DoesNotExist:
             # Don't reveal if user exists or not for security
