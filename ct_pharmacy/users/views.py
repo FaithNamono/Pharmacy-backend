@@ -467,6 +467,17 @@ def users_list_create(request):
     serializer = UserCreateSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
+
+        # This user is being created directly by an admin (not through public
+        # self-registration), so the admin is already vouching for this person
+        # and their email. Skip the OTP-based email verification step entirely —
+        # relying on it here would leave the new staff member permanently unable
+        # to log in if email delivery fails (which the register() flow has shown
+        # to be unreliable on Render's free tier). Auto-mark them verified so
+        # they can log in immediately with the password the admin set.
+        user.is_email_verified = True
+        user.save()
+
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
