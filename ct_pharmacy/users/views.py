@@ -26,12 +26,15 @@ def _send_email_otp_background(email, otp_code, otp_type):
     response or trigger a Gunicorn WORKER TIMEOUT, which previously killed
     the entire request without ever sending a response back to the client.
     """
+    print(f"BACKGROUND EMAIL: starting send to {email} (type={otp_type})")
     try:
         sent = send_email_otp(email, otp_code, otp_type)
-        if not sent:
+        if sent:
+            print(f"BACKGROUND EMAIL: successfully sent to {email} (type={otp_type})")
+        else:
             print(f"WARNING: background email send failed for {email} (type={otp_type})")
     except Exception as e:
-        print(f"Email sending error (background thread): {e}")
+        print(f"Email sending error (background thread) for {email}: {e}")
 
 @api_view(['POST'])
 @csrf_exempt
@@ -158,25 +161,34 @@ def send_otp(request):
             expires_at=timezone.now() + timedelta(minutes=10)
         )
 
-        # Send OTP
-        sent = False
+        # Send OTP. Email is sent in a background thread — same reasoning as
+        # register(): a hung/blocked SMTP connection must never block this
+        # response or risk a Gunicorn worker timeout. Phone/SMS is unsupported
+        # (no Twilio credentials configured) and no longer exposed in the app,
+        # but the branch is left here in case it's wired up again later.
         if email:
-            sent = send_email_otp(email, otp_code, otp_type)
+            threading.Thread(
+                target=_send_email_otp_background,
+                args=(email, otp_code, otp_type),
+                daemon=True,
+            ).start()
+
+            return Response({
+                'success': True,
+                'message': f'A verification code is being sent to {destination}.'
+            }, status=status.HTTP_200_OK)
+
         elif phone:
             sent = send_sms_otp(phone, otp_code, otp_type)
-
-        if sent:
-            return Response({
-                'success': True,
-                'message': f'OTP sent successfully to {destination}'
-            }, status=status.HTTP_200_OK)
-        else:
-            # For development, return success anyway with the OTP
-            return Response({
-                'success': True,
-                'message': f'Test OTP for {destination} is: {otp_code} (Email sending may not be configured)',
-                'test_otp': otp_code
-            }, status=status.HTTP_200_OK)
+            if sent:
+                return Response({
+                    'success': True,
+                    'message': f'OTP sent successfully to {destination}'
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': 'SMS delivery is not currently available. Please use email instead.'
+                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     print("Send OTP validation errors:", serializer.errors)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

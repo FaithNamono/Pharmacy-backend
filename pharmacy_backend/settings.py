@@ -24,13 +24,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third-party apps
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
     'whitenoise.runserver_nostatic',
-    
+
     # Local apps
     'ct_pharmacy.users',
     'ct_pharmacy.medicines',
@@ -157,13 +157,21 @@ REST_FRAMEWORK = {
 }
 
 # ============================================================
-# EMAIL SETTINGS (Gmail SMTP)
+# EMAIL SETTINGS (Brevo transactional email API — replaces old SMTP block)
 # ============================================================
+# Raw SMTP (Gmail, port 587) was unreliable on Render's free tier: it hung
+# long enough to trigger Gunicorn WORKER TIMEOUT crashes, and even after
+# background-threading the send, emails never actually arrived — strongly
+# suggesting outbound SMTP is blocked on this tier. Brevo sends over HTTPS
+# (port 443) instead, which isn't blocked, and fails fast with a clear
+# error if something's wrong. See utils.py: send_email_otp().
+#
+# Required environment variables (set these in Render's Environment tab,
+# NOT in a committed .env file):
+#   BREVO_API_KEY       - your Brevo transactional API key
+#   BREVO_SENDER_EMAIL  - an email address verified as a sender in Brevo
+#   BREVO_SENDER_NAME   - display name shown as the "From" name
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Dervin Pharmacy <noreply@dervinpharmacy.com>')
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
+BREVO_SENDER_EMAIL = os.environ.get('BREVO_SENDER_EMAIL', 'noreply@dervinpharmacy.com')
+BREVO_SENDER_NAME = os.environ.get('BREVO_SENDER_NAME', 'Dervin Pharmacy')
