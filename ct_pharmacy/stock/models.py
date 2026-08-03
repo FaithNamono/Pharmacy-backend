@@ -1,3 +1,5 @@
+# ct_pharmacy/stock/models.py
+
 from django.db import models
 from django.conf import settings
 from ct_pharmacy.medicines.models import Medicine
@@ -55,3 +57,45 @@ class StockCountItem(models.Model):
     class Meta:
         db_table = 'stock_count_items'
         unique_together = ['stock_count', 'medicine']
+
+# ✅ ADD THIS NEW MODEL
+class InventoryHistory(models.Model):
+    """Track all inventory changes"""
+    
+    ACTION_TYPES = (
+        ('restock', 'Restock'),
+        ('sale', 'Sale'),
+        ('adjustment', 'Adjustment'),
+        ('return', 'Return'),
+        ('expired', 'Expired'),
+        ('write_off', 'Write Off'),
+        ('stock_take', 'Stock Take'),
+    )
+    
+    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE, related_name='inventory_history')
+    action_type = models.CharField(max_length=20, choices=ACTION_TYPES)
+    quantity_changed = models.IntegerField(help_text="Positive for increase, negative for decrease")
+    previous_quantity = models.IntegerField()
+    new_quantity = models.IntegerField()
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    total_value = models.DecimalField(max_digits=12, decimal_places=2, help_text="Quantity changed × unit cost")
+    reference = models.CharField(max_length=100, blank=True, help_text="Reference like sale ID, purchase order, etc.")
+    notes = models.TextField(blank=True)
+    performed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'inventory_history'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_at']),
+            models.Index(fields=['medicine']),
+            models.Index(fields=['action_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.medicine.name} - {self.action_type} - {self.quantity_changed} units"
+    
+    @property
+    def total_value_display(self):
+        return f"UGX {self.total_value:,.0f}"
